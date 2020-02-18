@@ -1,11 +1,13 @@
 from datetime import datetime as dt, timedelta
 from typing import List
+import collections
 import logging
 import re
 
 import config
 
 from aiogram import Bot, Dispatcher, executor, types
+import matplotlib.pyplot as plt
 import aiohttp
 
 logging.basicConfig(level=logging.INFO)
@@ -43,7 +45,7 @@ async def exchange(message: types.Message) -> None:
     await check_rates_dict()
 
     msg = re.split(' to ', message.text.replace('/exchange', ''))
-    res = get_values_from_request(msg, has_amount=True)
+    res = get_values_from_request(msg)
 
     await message.reply(res)
 
@@ -55,15 +57,39 @@ async def history(message: types.Message) -> None:
     selected currency for the last 7 days. Here it is not necessary to save anything in the local database, you should
     request every time the currency data for the last 7 days.
     """
-    msg = re.split('/', message.text.Truereplace('/history', ''))
-    res = get_values_from_request(msg, has_amount=False)
+    msg = re.split('/', message.text.replace('/history', ''))
+    if len(msg) != 2:
+        await message.reply("Please, check your request!")
+        return
+
+    first_currency, second_currency = get_currencies(msg)
+    if not first_currency and not second_currency:
+        await message.reply("Please, check your request!")
+        return
+
+    now = dt.now().date()
+    week_ago = now - timedelta(days=7)
+    url = f'https://api.exchangeratesapi.io/history?start_at={week_ago}&end_at={now}&base={first_currency}&symbols={second_currency}'
 
     async with aiohttp.ClientSession(raise_for_status=True) as session:
-        url = 'https://api.exchangeratesapi.io/history?start_at=2019-11-27&end_at=2019-12-03&base=USD&symbols=CAD'
         async with session.get(url) as response:
             r = await response.json()
+            if not r:
+                await message.reply("No exchange rate data is available for the selected currency.")
+                return
 
-    await message.reply(r)
+            x, y = [], []
+            ordered_rates_dict = collections.OrderedDict(sorted(r['rates'].items()))
+            for date, value in ordered_rates_dict.items():
+                x.append(date)
+                y.append(value[second_currency])
+            plt.plot(x, y)
+
+            plt_name = f'{first_currency}/{second_currency}-{now}.png'
+            plt.savefig(plt_name)
+
+    with open(plt_name, 'rb') as rates:
+        await message.reply_photo(rates, caption='Rates ')
 
 
 async def check_rates_dict():
@@ -86,19 +112,14 @@ def get_rates_str(rates: dict) -> str:
     return result_str
 
 
-def get_values_from_request(msg: List[str], has_amount: bool) -> str:
-    if len(msg) != 2: return "Please, check your request!"
+def get_values_from_request(msg: List[str]) -> str:
+    if len(msg) != 2:
+        return "Please, check your request!"
 
-    first_currency, second_currency, amount = '', '', ''
-
-    first = re.search(r"[a-zA-Z]{3}\b|\$", msg[0])
-    if first: first_currency = first.group()
-
-    second = re.search(r"\b[a-zA-Z]{3}\b", msg[1])
-    if second: second_currency = second.group()
+    first_currency, second_currency = get_currencies(msg)
 
     amount_r = re.search(r"\d+", msg[0])
-    if amount_r: amount = float(amount_r.group())
+    amount = float(amount_r.group()) if amount_r else None
 
     if not first_currency and second_currency and amount:
         return "Please, check your request!"
@@ -111,6 +132,21 @@ def get_values_from_request(msg: List[str], has_amount: bool) -> str:
         return f"Please, check your request! Can't understand second currency"
 
     return f"${round(rate * amount, 2)}"
+
+
+def get_currencies(msg: List[str]) -> (str, str):
+    first_currency, second_currency = '', ''
+
+    first = re.search(r"[a-zA-Z]{3}\b|\$", msg[0])
+    if first: first_currency = first.group()
+
+    second = re.search(r"\b[a-zA-Z]{3}\b", msg[1])
+    if second: second_currency = second.group()
+
+    if not first_currency and second_currency:
+        return "", ""
+
+    return first_currency, second_currency
 
 
 if __name__ == '__main__':
