@@ -4,13 +4,14 @@ import collections
 import logging
 import re
 
-import config
-
 from aiogram import Bot, Dispatcher, executor, types
 import matplotlib.pyplot as plt
 import aiohttp
 
+import config
+
 logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
 TOKEN = config.BOT_TOKEN
 bot = Bot(token=TOKEN)
@@ -79,7 +80,7 @@ async def history(message: types.Message) -> None:
             x, y = [], []
             ordered_rates_dict = collections.OrderedDict(sorted(r['rates'].items()))
             for date, value in ordered_rates_dict.items():
-                x.append(date)
+                x.append(dt.strptime(date, '%Y-%m-%d'))
                 y.append(value[second_currency])
             plt.plot(x, y)
 
@@ -89,8 +90,9 @@ async def history(message: types.Message) -> None:
         with open(plt_name, 'rb') as rates:
             await message.reply_photo(rates, caption=f'Rates {first_currency}/{second_currency}')
 
-    except aiohttp.ClientResponseError:
+    except aiohttp.ClientResponseError as e:
         await message.reply("No exchange rate data is available for the selected currency.")
+        log.exception(e)
         return
 
 
@@ -152,4 +154,10 @@ def get_currencies(msg: List[str]) -> (str, str):
 
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    start_time = dt.now()
+    log.warning(f'================================================')
+    log.warning(f'Start bot at {start_time}')
+    try:
+        executor.start_polling(dp, skip_updates=True)
+    finally:
+        log.warning(f'Stop bot. Worked {(dt.now() - start_time).seconds} seconds')
