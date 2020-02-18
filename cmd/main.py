@@ -77,18 +77,20 @@ async def history(message: types.Message) -> None:
             async with session.get(url) as response:
                 r = await response.json()
 
-            x, y = [], []
-            ordered_rates_dict = collections.OrderedDict(sorted(r['rates'].items()))
-            for date, value in ordered_rates_dict.items():
-                x.append(dt.strptime(date, '%Y-%m-%d'))
-                y.append(value[second_currency])
-            plt.plot(x, y)
+        x, y = [], []
+        ordered_rates_dict = collections.OrderedDict(sorted(r['rates'].items()))
+        for date, value in ordered_rates_dict.items():
+            x.append(dt.strptime(date, '%Y-%m-%d'))
+            y.append(round(value[second_currency], 4))
 
-            plt_name = f'{first_currency}-{second_currency}-{now}.png'
-            plt.savefig(plt_name)
+        plt.plot(x, y)
+        plt_name = f'{first_currency}-{second_currency}-{now}.png'
+        plt.savefig(plt_name)
+        plt.close()
 
         with open(plt_name, 'rb') as rates:
             await message.reply_photo(rates, caption=f'Rates {first_currency}/{second_currency}')
+            return
 
     except aiohttp.ClientResponseError as e:
         await message.reply("No exchange rate data is available for the selected currency.")
@@ -135,7 +137,7 @@ def get_values_from_request(msg: List[str]) -> str:
     if not rate:
         return f"Please, check your request! Can't understand second currency"
 
-    return f"${round(rate * amount, 2)}"
+    return f"{round(rate * amount, 2)}"
 
 
 def get_currencies(msg: List[str]) -> (str, str):
