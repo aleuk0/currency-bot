@@ -71,12 +71,10 @@ async def history(message: types.Message) -> None:
     week_ago = now - timedelta(days=7)
     url = f'https://api.exchangeratesapi.io/history?start_at={week_ago}&end_at={now}&base={first_currency}&symbols={second_currency}'
 
-    async with aiohttp.ClientSession(raise_for_status=True) as session:
-        async with session.get(url) as response:
-            r = await response.json()
-            if not r:
-                await message.reply("No exchange rate data is available for the selected currency.")
-                return
+    try:
+        async with aiohttp.ClientSession(raise_for_status=True) as session:
+            async with session.get(url) as response:
+                r = await response.json()
 
             x, y = [], []
             ordered_rates_dict = collections.OrderedDict(sorted(r['rates'].items()))
@@ -85,11 +83,15 @@ async def history(message: types.Message) -> None:
                 y.append(value[second_currency])
             plt.plot(x, y)
 
-            plt_name = f'{first_currency}/{second_currency}-{now}.png'
+            plt_name = f'{first_currency}-{second_currency}-{now}.png'
             plt.savefig(plt_name)
 
-    with open(plt_name, 'rb') as rates:
-        await message.reply_photo(rates, caption='Rates ')
+        with open(plt_name, 'rb') as rates:
+            await message.reply_photo(rates, caption=f'Rates {first_currency}/{second_currency}')
+
+    except aiohttp.ClientResponseError:
+        await message.reply("No exchange rate data is available for the selected currency.")
+        return
 
 
 async def check_rates_dict():
